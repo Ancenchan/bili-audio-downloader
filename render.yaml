@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: bili-audio-api
+    runtime: docker
+    dockerContext: ./backend
+    dockerfilePath: ./backend/Dockerfile
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: FRONTEND_ORIGIN
+        sync: false
+      - key: MAX_DURATION_SECONDS
+        value: "10800"
+      - key: MAX_OUTPUT_MB
+        value: "300"
