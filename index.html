@@ -8,12 +8,38 @@
 </style></head>
 <body><header><div class="brand"><span class="logo">♫</span> B站音频提取器</div><span>粘贴链接 · 转换 MP3 · 浏览器下载</span></header>
 <main><section class="hero"><h1>把喜欢的声音，<em>带走</em></h1><p>输入你有权下载的 B 站视频链接，提取为 MP3 音频</p></section>
-<section class="panel"><form id="form"><div class="formrow"><input id="url" class="url" type="url" required placeholder="粘贴 B 站链接，例如 https://www.bilibili.com/video/BV..." autocomplete="url"><button id="submit" type="submit">↓ 提取并下载</button></div><p class="hint">支持 bilibili.com 与 b23.tv 短链接。登录限制、会员内容或地区限制可能导致解析失败。</p></form><div id="status" class="status" role="status" aria-live="polite"></div>
+<section class="panel"><form id="form"><div class="formrow"><input id="url" class="url" type="text" required placeholder="粘贴 B 站链接，或整段分享文案（如【视频标题】https://b23.tv/xxxx）" autocomplete="off"><button id="submit" type="submit">↓ 提取并下载</button></div><p class="hint">支持直接粘贴 B 站分享文案，网页会自动提取其中的 bilibili.com 或 b23.tv 链接，无需手动删除标题。</p></form><div id="status" class="status" role="status" aria-live="polite"></div>
 <div class="features"><div class="feature"><b>♫ 尽量高音质</b><p>优先获取可访问的高质量音频，再转换为 MP3。</p></div><div class="feature"><b>↓ 直接下载</b><p>转换完成后由浏览器保存文件，不在网站长期存储。</p></div><div class="feature"><b>⌁ 简单易用</b><p>无需安装桌面软件，手机和电脑浏览器均可尝试。</p></div></div></section>
-<section class="steps"><h2>使用步骤</h2><ol><li>复制 B 站视频页面链接。</li><li>粘贴到输入框，点击“提取并下载”。</li><li>等待解析和转码，浏览器开始下载 MP3。</li></ol></section><p class="foot">请仅下载你有权保存和使用的内容，并遵守 B 站服务条款及著作权相关规定。<br>免费后端可能休眠；首次请求需要等待服务唤醒。</p></main>
+<section class="steps"><h2>使用步骤</h2><ol><li>复制 B 站视频页面链接或分享文案。</li><li>直接粘贴到输入框，点击“提取并下载”。</li><li>等待解析和转码，浏览器开始下载 MP3。</li></ol></section><p class="foot">请仅下载你有权保存和使用的内容，并遵守 B 站服务条款及著作权相关规定。<br>免费后端可能休眠；首次请求需要等待服务唤醒。</p></main>
 <script>
 const API_BASE = "https://bili-audio-api.onrender.com";
 const form=document.querySelector("#form"),input=document.querySelector("#url"),button=document.querySelector("#submit"),statusBox=document.querySelector("#status");
 function showStatus(message,error=false){statusBox.className="status show"+(error?" error":"");statusBox.textContent=message;}
-form.addEventListener("submit",async event=>{event.preventDefault();const url=input.value.trim();let parsed;try{parsed=new URL(url)}catch{showStatus("请输入有效的 B 站视频链接。",true);return}if(!/^([a-z0-9-]+\.)*bilibili\.com$|^b23\.tv$/i.test(parsed.hostname)||!/^https?:$/.test(parsed.protocol)){showStatus("请输入 bilibili.com 或 b23.tv 链接。",true);return}if(API_BASE.includes("YOUR-RENDER-SERVICE")){showStatus("后端尚未部署完成，请稍后再试。",true);return}button.disabled=true;button.textContent="正在处理…";showStatus("正在连接服务并提取音频。免费服务首次启动可能需要等待一会儿。");try{const response=await fetch(API_BASE+"/api/download",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({url})});if(!response.ok){let message="处理失败，请稍后重试。";try{const data=await response.json();if(data.error)message=data.error}catch{}throw new Error(message)}const blob=await response.blob();const disposition=response.headers.get("Content-Disposition")||"";let filename="bilibili-audio.mp3";const match=disposition.match(/filename\*=UTF-8''([^;]+)/i)||disposition.match(/filename="?([^";]+)"?/i);if(match){try{filename=decodeURIComponent(match[1])}catch{filename=match[1]}}const objectUrl=URL.createObjectURL(blob),a=document.createElement("a");a.href=objectUrl;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(objectUrl),60000);showStatus("转换完成，已触发浏览器下载。")}catch(error){showStatus(error.message||"请求失败，请检查网络后重试。",true)}finally{button.disabled=false;button.textContent="↓ 提取并下载"}});
+function extractBilibiliUrl(text){
+  const candidates=text.match(/https?:\/\/[^\s<>"'【】「」『』]+/gi)||[];
+  for(const candidate of candidates){
+    const cleaned=candidate.replace(/[\]})，。！？、；："'】」』>]+$/g,"").replace(/[.,!?;:]+$/g,"");
+    try{const parsed=new URL(cleaned);if(/^https?:$/.test(parsed.protocol)&&(/^([a-z0-9-]+\.)*bilibili\.com$/i.test(parsed.hostname)||/^b23\.tv$/i.test(parsed.hostname)))return parsed.href;}catch{}
+  }
+  return null;
+}
+form.addEventListener("submit",async event=>{
+ event.preventDefault();
+ const pasted=input.value.trim();
+ const url=extractBilibiliUrl(pasted);
+ if(!url){showStatus("没有找到有效的 B 站链接。请粘贴包含 https://b23.tv/… 或 https://www.bilibili.com/… 的分享文案。",true);return;}
+ if(pasted!==url)showStatus("已从分享文案中识别链接："+url+"\n正在连接服务并提取音频……");
+ if(API_BASE.includes("YOUR-RENDER-SERVICE")){showStatus("后端尚未部署完成，请稍后再试。",true);return}
+ button.disabled=true;button.textContent="正在处理…";
+ if(pasted===url)showStatus("正在连接服务并提取音频。免费服务首次启动可能需要等待一会儿。");
+ try{
+  const response=await fetch(API_BASE+"/api/download",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({url})});
+  if(!response.ok){let message="处理失败，请稍后重试。";try{const data=await response.json();if(data.error)message=data.error}catch{}throw new Error(message)}
+  const blob=await response.blob();const disposition=response.headers.get("Content-Disposition")||"";let filename="bilibili-audio.mp3";
+  const match=disposition.match(/filename\*=UTF-8''([^;]+)/i)||disposition.match(/filename="?([^";]+)"?/i);
+  if(match){try{filename=decodeURIComponent(match[1])}catch{filename=match[1]}}
+  const objectUrl=URL.createObjectURL(blob),a=document.createElement("a");a.href=objectUrl;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(objectUrl),60000);showStatus("转换完成，已触发浏览器下载。");
+ }catch(error){showStatus(error.message||"请求失败，请检查网络后重试。",true)}
+ finally{button.disabled=false;button.textContent="↓ 提取并下载"}
+});
 </script></body></html>
