@@ -18,7 +18,7 @@ function showStatus(message,error=false){statusBox.className="status show"+(erro
 function extractBilibiliUrl(text){
   const candidates=text.match(/https?:\/\/[^\s<>"'【】「」『』]+/gi)||[];
   for(const candidate of candidates){
-    const cleaned=candidate.replace(/[\]})，。！？、；："'】」』>]+$/g,"").replace(/[.,!?;:]+$/g,"");
+    const cleaned=candidate.replace(/[)\]}，。！？、；："'】」』>.,!?;:]+$/g,"");
     try{const parsed=new URL(cleaned);if(/^https?:$/.test(parsed.protocol)&&(/^([a-z0-9-]+\.)*bilibili\.com$/i.test(parsed.hostname)||/^b23\.tv$/i.test(parsed.hostname)))return parsed.href;}catch{}
   }
   return null;
