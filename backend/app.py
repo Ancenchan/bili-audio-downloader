@@ -55,6 +55,7 @@ def download_audio():
             "format": "bestaudio/best",
             "noplaylist": True,
             "outtmpl": os.path.join(temp_dir, "%(id)s.%(ext)s"),
+            "ffmpeg_location": shutil.which("ffmpeg") or "/usr/bin/ffmpeg",
             "restrictfilenames": True,
             "quiet": True,
             "no_warnings": True,
@@ -71,7 +72,8 @@ def download_audio():
             title = info.get("title") or "bilibili-audio"
             files = [os.path.join(temp_dir, n) for n in os.listdir(temp_dir) if n.lower().endswith(".mp3") and os.path.isfile(os.path.join(temp_dir, n))]
             if not files:
-                raise RuntimeError("未生成 MP3 文件。请检查 FFmpeg 是否安装，或稍后重试。")
+                app.logger.error("yt-dlp completed without MP3 output; temp files: %s; ffmpeg: %s", os.listdir(temp_dir), shutil.which("ffmpeg"))
+                raise RuntimeError("转换没有生成 MP3 文件。后端已记录诊断信息，请稍后重试；若持续失败，可能是视频源格式或转换过程异常。")
             output_path = max(files, key=os.path.getsize)
             if os.path.getsize(output_path) > MAX_OUTPUT_MB * 1024 * 1024:
                 raise RuntimeError(f"音频文件超过 {MAX_OUTPUT_MB} MB 限制。")
