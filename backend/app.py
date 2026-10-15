@@ -18,6 +18,14 @@ download_lock = threading.Lock()
 MAX_DURATION_SECONDS = int(os.environ.get("MAX_DURATION_SECONDS", "10800"))
 MAX_OUTPUT_MB = int(os.environ.get("MAX_OUTPUT_MB", "300"))
 
+
+def duration_filter(info, *, incomplete):
+    """Reject videos longer than the configured limit; allow unknown duration."""
+    duration = info.get("duration")
+    if duration is not None and duration > MAX_DURATION_SECONDS:
+        return f"视频时长超过 {MAX_DURATION_SECONDS} 秒限制"
+    return None
+
 def validate_bilibili_url(raw_url: str) -> str:
     if not isinstance(raw_url, str) or len(raw_url) > 2048:
         raise ValueError("链接无效或过长。")
@@ -64,7 +72,7 @@ def download_audio():
             "retries": 1,
             "fragment_retries": 1,
             "max_filesize": MAX_OUTPUT_MB * 1024 * 1024,
-            "match_filter": yt_dlp.utils.match_filter_func(f"duration > {MAX_DURATION_SECONDS}"),
+            "match_filter": duration_filter,
             "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "0"}],
             "http_headers": {"User-Agent": "Mozilla/5.0"},
         }
