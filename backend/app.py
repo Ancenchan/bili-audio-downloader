@@ -49,6 +49,15 @@ def duration_filter(info, *, incomplete):
         return f"视频时长超过 {MAX_DURATION_SECONDS} 秒限制"
     return None
 
+
+def video_fallback_formats(quality):
+    """视频流被 CDN 拒绝（HTTP 503）时的兜底格式链：先换 AVC 编码（走不同线路），再退回单文件。"""
+    height = f"[height<={quality}]" if quality != "best" else ""
+    if height:
+        return [f"bv*{height}[vcodec^=avc]+ba/b{height}", f"b{height}/best/b"]
+    return ["bv*[vcodec^=avc]+ba/b", "b/best"]
+
+
 def validate_bilibili_url(raw_url: str) -> str:
     if not isinstance(raw_url, str) or len(raw_url) > 2048:
         raise ValueError("链接无效或过长。")
@@ -249,11 +258,36 @@ def process_download(task_id, url, mode, pitch, quality, temp_dir):
             "progress_hooks": [progress_hook],
             "max_filesize": MAX_OUTPUT_MB * 1024 * 1024,
             "match_filter": duration_filter,
-            "http_headers": {"User-Agent": "Mozilla/5.0"},
+            "http_headers": {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                "Referer": "https://www.bilibili.com/",
+            },
         }
         with yt_dlp.YoutubeDL(opts) as ydl:
             app.logger.info("Starting yt-dlp; host=%s; version=%s", urlparse(url).hostname, yt_dlp.version.__version__)
-            info = ydl.extract_info(url, download=True)
+            try:
+                info = ydl.extract_info(url, download=True)
+            except yt_dlp.utils.DownloadError as first_error:
+                # B 站 CDN 偶尔会对视频流返回 503（云端 IP 常见），同线路重试无效，换格式/线路再试
+                if mode == "audio" or "503" not in str(first_error):
+                    raise
+                info = None
+                last_error = first_error
+                for fmt in video_fallback_formats(quality):
+                    add_task_log(task_id, f"视频源 503，切换下载线路重试：{fmt}", "WARN")
+                    set_progress("下载源文件", 1, "源线路不可用，正在切换线路重试")
+                    for stale in os.listdir(temp_dir):
+                        stale_path = os.path.join(temp_dir, stale)
+                        if os.path.isfile(stale_path):
+                            os.remove(stale_path)
+                    try:
+                        with yt_dlp.YoutubeDL(dict(opts, format=fmt)) as ydl_retry:
+                            info = ydl_retry.extract_info(url, download=True)
+                        break
+                    except yt_dlp.utils.DownloadError as exc:
+                        last_error = exc
+                if info is None:
+                    raise last_error
             set_progress("音视频转换", 100, "源文件下载完成，正在转换输出文件")
             app.logger.info("yt-dlp returned: extractor=%s id=%s duration=%s requested_downloads=%s files=%s",
                             info.get("extractor_key"), info.get("id"), info.get("duration"),
@@ -369,6 +403,8 @@ def process_download(task_id, url, mode, pitch, quality, temp_dir):
         raw_message = str(exc)
         if "Sign in" in raw_message or "login" in raw_message.lower() or "cookie" in raw_message.lower():
             message = "该视频可能需要登录或受到访问限制。本服务不会绕过登录或访问控制。"
+        elif "503" in raw_message:
+            message = "B 站视频源暂时拒绝服务（HTTP 503），已自动切换下载线路仍未成功。请稍后重试，或降低画质后再试。"
         else:
             message = "解析或下载失败：视频可能不可访问、接口发生变化，或免费服务资源不足。请稍后重试。"
         mark_error(message)
