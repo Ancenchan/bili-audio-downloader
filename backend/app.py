@@ -58,7 +58,8 @@ def download_audio():
             "ffmpeg_location": shutil.which("ffmpeg") or "/usr/bin/ffmpeg",
             "restrictfilenames": True,
             "quiet": False,
-            "no_warnings": True,
+            "no_warnings": False,
+            "verbose": True,
             "socket_timeout": 25,
             "retries": 1,
             "fragment_retries": 1,
@@ -68,7 +69,11 @@ def download_audio():
             "http_headers": {"User-Agent": "Mozilla/5.0"},
         }
         with yt_dlp.YoutubeDL(opts) as ydl:
+            app.logger.info("Starting yt-dlp; host=%s; version=%s", urlparse(url).hostname, yt_dlp.version.__version__)
             info = ydl.extract_info(url, download=True)
+            app.logger.info("yt-dlp returned: extractor=%s id=%s duration=%s requested_downloads=%s files=%s",
+                            info.get("extractor_key"), info.get("id"), info.get("duration"),
+                            len(info.get("requested_downloads") or []), os.listdir(temp_dir))
             title = info.get("title") or "bilibili-audio"
             files = [os.path.join(temp_dir, n) for n in os.listdir(temp_dir) if n.lower().endswith(".mp3") and os.path.isfile(os.path.join(temp_dir, n))]
             if not files:
