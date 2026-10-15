@@ -58,7 +58,7 @@ def download_audio():
         pitch = data.get("pitch", 0)
         if isinstance(pitch, bool) or not isinstance(pitch, int) or pitch < -12 or pitch > 12:
             raise ValueError("升降调参数必须为 -12 到 +12 的整数半音。")
-        if mode != "av_pitch":
+        if mode == "video":
             pitch = 0
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
@@ -107,10 +107,21 @@ def download_audio():
 
             if mode == "audio":
                 output_path = os.path.join(temp_dir, f"{safe_title}.mp3")
+                encode_source = source_path
+                if pitch:
+                    wav_path = os.path.join(temp_dir, "audio-source.wav")
+                    shifted_path = os.path.join(temp_dir, "audio-pitch-shifted.wav")
+                    subprocess.run(
+                        [ffmpeg, "-y", "-i", source_path, "-vn", "-map", "0:a:0", "-ac", "2", "-ar", "48000", "-c:a", "pcm_s24le", wav_path],
+                        check=True, capture_output=True, text=True, timeout=600
+                    )
+                    rubberband = shutil.which("rubberband")
+                    if not rubberband:
+                        raise RuntimeError("升降调组件未安装，请等待后端重新部署完成。")
+                    subprocess.run([rubberband, "-3", "-F", "-p", str(pitch), wav_path, shifted_path], check=True, capture_output=True, text=True, timeout=600)
+                    encode_source = shifted_path
                 subprocess.run(
-                    [ffmpeg, "-y", "-i", source_path, "-vn", "-map", "0:a:0",
-                     "-ac", "2", "-ar", "48000", "-c:a", "libmp3lame",
-                     "-b:a", "320k", "-id3v2_version", "3", output_path],
+                    [ffmpeg, "-y", "-i", encode_source, "-vn", "-map", "0:a:0", "-ac", "2", "-ar", "48000", "-c:a", "libmp3lame", "-b:a", "320k", "-id3v2_version", "3", output_path],
                     check=True, capture_output=True, text=True, timeout=600
                 )
                 mime_type = "audio/mpeg"
