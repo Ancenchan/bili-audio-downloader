@@ -52,9 +52,14 @@ def download_audio():
     data = request.get_json(silent=True) or {}
     try:
         url = validate_bilibili_url(data.get("url", ""))
+        mode = data.get("mode", "audio")
+        if mode not in ("audio", "video", "av_pitch"):
+            raise ValueError("请选择音频、视频或音视频升降调模式。")
         pitch = data.get("pitch", 0)
         if isinstance(pitch, bool) or not isinstance(pitch, int) or pitch < -12 or pitch > 12:
             raise ValueError("升降调参数必须为 -12 到 +12 的整数半音。")
+        if mode != "av_pitch":
+            pitch = 0
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
 
@@ -64,7 +69,8 @@ def download_audio():
     temp_dir = tempfile.mkdtemp(prefix="bili-audio-")
     try:
         opts = {
-            "format": "bestaudio/best",
+            "format": ("bestaudio/best" if mode == "audio" else "bestvideo*+bestaudio/best"),
+            "merge_output_format": "mp4",
             "noplaylist": True,
             "outtmpl": os.path.join(temp_dir, "%(id)s.%(ext)s"),
             "ffmpeg_location": shutil.which("ffmpeg") or "/usr/bin/ffmpeg",
@@ -87,49 +93,71 @@ def download_audio():
                             len(info.get("requested_downloads") or []), os.listdir(temp_dir))
             title = info.get("title") or "bilibili-audio"
             safe_title = re.sub(r'[\\/:*?"<>|\r\n]+', "_", title).strip(" ._")[:100] or "bilibili-audio"
-            source_files = [
+            ffmpeg = shutil.which("ffmpeg") or "/usr/bin/ffmpeg"
+            downloaded = [
                 os.path.join(temp_dir, name)
                 for name in os.listdir(temp_dir)
                 if os.path.isfile(os.path.join(temp_dir, name))
-                and not name.lower().endswith((".wav", ".mp3", ".part", ".json"))
+                and not name.lower().endswith((".part", ".json", ".description", ".jpg", ".png", ".webp"))
             ]
-            if not source_files:
-                app.logger.error("yt-dlp completed without a source audio file; temp files: %s; ffmpeg: %s", os.listdir(temp_dir), shutil.which("ffmpeg"))
-                raise RuntimeError("没有找到下载后的原始音频文件，请稍后重试。")
-            source_path = max(source_files, key=os.path.getsize)
-            output_path = os.path.join(temp_dir, f"{safe_title}.mp3")
-            ffmpeg = shutil.which("ffmpeg") or "/usr/bin/ffmpeg"
+            if not downloaded:
+                app.logger.error("yt-dlp completed without output; temp files: %s", os.listdir(temp_dir))
+                raise RuntimeError("没有找到下载文件，请稍后重试。")
+            source_path = max(downloaded, key=os.path.getsize)
 
-            if pitch:
-                wav_path = os.path.join(temp_dir, "audio-source.wav")
-                shifted_path = os.path.join(temp_dir, "audio-pitch-shifted.wav")
+            if mode == "audio":
+                output_path = os.path.join(temp_dir, f"{safe_title}.mp3")
                 subprocess.run(
                     [ffmpeg, "-y", "-i", source_path, "-vn", "-map", "0:a:0",
-                     "-ac", "2", "-ar", "48000", "-c:a", "pcm_s24le", wav_path],
+                     "-ac", "2", "-ar", "48000", "-c:a", "libmp3lame",
+                     "-b:a", "320k", "-id3v2_version", "3", output_path],
                     check=True, capture_output=True, text=True, timeout=600
                 )
-                rubberband = shutil.which("rubberband")
-                if not rubberband:
-                    raise RuntimeError("升降调组件未安装，请等待后端重新部署完成。")
-                subprocess.run(
-                    [rubberband, "-3", "-F", "-p", str(pitch), wav_path, shifted_path],
-                    check=True, capture_output=True, text=True, timeout=600
-                )
-                encode_source = shifted_path
+                mime_type = "audio/mpeg"
+            elif mode == "video":
+                output_path = os.path.join(temp_dir, f"{safe_title}.mp4")
+                if os.path.abspath(source_path) != os.path.abspath(output_path):
+                    shutil.copyfile(source_path, output_path)
+                mime_type = "video/mp4"
             else:
-                encode_source = source_path
+                if not pitch:
+                    output_path = os.path.join(temp_dir, f"{safe_title}.mp4")
+                    if os.path.abspath(source_path) != os.path.abspath(output_path):
+                        shutil.copyfile(source_path, output_path)
+                else:
+                    wav_path = os.path.join(temp_dir, "audio-source.wav")
+                    shifted_path = os.path.join(temp_dir, "audio-pitch-shifted.wav")
+                    aac_path = os.path.join(temp_dir, "audio-pitch-shifted.m4a")
+                    output_path = os.path.join(temp_dir, f"{safe_title}.mp4")
+                    subprocess.run(
+                        [ffmpeg, "-y", "-i", source_path, "-vn", "-map", "0:a:0",
+                         "-ac", "2", "-ar", "48000", "-c:a", "pcm_s24le", wav_path],
+                        check=True, capture_output=True, text=True, timeout=600
+                    )
+                    rubberband = shutil.which("rubberband")
+                    if not rubberband:
+                        raise RuntimeError("升降调组件未安装，请等待后端重新部署完成。")
+                    subprocess.run(
+                        [rubberband, "-3", "-F", "-p", str(pitch), wav_path, shifted_path],
+                        check=True, capture_output=True, text=True, timeout=600
+                    )
+                    subprocess.run(
+                        [ffmpeg, "-y", "-i", shifted_path, "-c:a", "aac", "-b:a", "320k", aac_path],
+                        check=True, capture_output=True, text=True, timeout=600
+                    )
+                    subprocess.run(
+                        [ffmpeg, "-y", "-i", source_path, "-i", aac_path,
+                         "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy", "-c:a", "copy",
+                         "-movflags", "+faststart", "-shortest", output_path],
+                        check=True, capture_output=True, text=True, timeout=600
+                    )
+                mime_type = "video/mp4"
 
-            subprocess.run(
-                [ffmpeg, "-y", "-i", encode_source, "-vn", "-map", "0:a:0",
-                 "-ac", "2", "-ar", "48000", "-c:a", "libmp3lame",
-                 "-b:a", "320k", "-id3v2_version", "3", output_path],
-                check=True, capture_output=True, text=True, timeout=600
-            )
             if not os.path.isfile(output_path) or os.path.getsize(output_path) == 0:
-                raise RuntimeError("转换没有生成有效的 MP3 文件，请稍后重试。")
+                raise RuntimeError("没有生成有效的输出文件，请稍后重试。")
             if os.path.getsize(output_path) > MAX_OUTPUT_MB * 1024 * 1024:
-                raise RuntimeError(f"音频文件超过 {MAX_OUTPUT_MB} MB 限制。")
-            response = send_file(output_path, mimetype="audio/mpeg", as_attachment=True, download_name=f"{safe_title}.mp3", conditional=False)
+                raise RuntimeError(f"文件超过 {MAX_OUTPUT_MB} MB 限制。")
+            response = send_file(output_path, mimetype=mime_type, as_attachment=True, download_name=os.path.basename(output_path), conditional=False)
             response.call_on_close(lambda: shutil.rmtree(temp_dir, ignore_errors=True))
             return response
     except yt_dlp.utils.DownloadError as exc:
