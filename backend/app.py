@@ -166,7 +166,7 @@ def download_audio():
             elif d.get("status") == "finished":
                 set_progress("处理源文件", 100, "源文件下载完成，开始转换")
         opts = {
-            "format": ("bestaudio/best" if mode == "audio" else (f"bestvideo[height<={quality}]+bestaudio/best[height<={quality}]" if quality != "best" else "bestvideo*+bestaudio/best")),
+            "format": ("bestaudio/best" if mode == "audio" else (f"bv*[height<={quality}]+ba/b[height<={quality}]/bv*+ba/b" if quality != "best" else "bv*+ba/b")),
             "logger": TaskLogger(),
             "merge_output_format": "mp4",
             "noplaylist": True,
@@ -179,6 +179,7 @@ def download_audio():
             "socket_timeout": 45,
             "retries": 8,
             "extractor_retries": 5,
+            "ignore_no_formats_error": False,
             "fragment_retries": 10,
             "file_access_retries": 5,
             "retry_sleep_functions": {"http": lambda n: min(2 * n, 15), "fragment": lambda n: min(2 * n, 15), "extractor": lambda n: min(2 * n, 15)},
