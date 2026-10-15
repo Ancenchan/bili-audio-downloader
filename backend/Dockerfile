@@ -13,4 +13,4 @@ COPY requirements.txt .
 RUN pip install -r requirements.txt
 COPY app.py .
 EXPOSE 10000
-CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT:-10000} --workers 1 --threads 2 --timeout 900 app:app"]
+CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT:-10000} --workers 1 --threads 2 --timeout 3600 app:app"]
