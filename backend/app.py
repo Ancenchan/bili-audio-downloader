@@ -18,6 +18,19 @@ CORS(app, resources={r"/api/*": {"origins": frontend_origin.split(",") if fronte
 download_lock = threading.Lock()
 progress_lock = threading.Lock()
 task_progress = {}
+task_logs = {}
+MAX_LOG_LINES = 600
+
+
+def add_task_log(task_id, message, level="INFO"):
+    from datetime import datetime
+    line = f"{datetime.utcnow().strftime('%H:%M:%S')} [{level}] {str(message).rstrip()}"
+    with progress_lock:
+        lines = task_logs.setdefault(task_id, [])
+        lines.append(line[:2000])
+        if len(lines) > MAX_LOG_LINES:
+            del lines[:-MAX_LOG_LINES]
+
 MAX_DURATION_SECONDS = int(os.environ.get("MAX_DURATION_SECONDS", "10800"))
 MAX_OUTPUT_MB = int(os.environ.get("MAX_OUTPUT_MB", "300"))
 
@@ -57,6 +70,12 @@ def get_progress(task_id):
         return jsonify({"stage": "waiting", "percent": 0, "message": "等待后端接收任务"})
     return jsonify(state)
 
+@app.get("/api/logs/<task_id>")
+def get_task_logs(task_id):
+    with progress_lock:
+        lines = list(task_logs.get(task_id, []))
+    return jsonify({"task_id": task_id, "logs": lines})
+
 @app.post("/api/download")
 def download_audio():
     data = request.get_json(silent=True) or {}
@@ -73,6 +92,9 @@ def download_audio():
         task_id = str(data.get("task_id", ""))[:80]
         if not task_id or not re.fullmatch(r"[a-zA-Z0-9_-]+", task_id):
             raise ValueError("任务编号无效，请刷新网页后重试。")
+        quality = str(data.get("quality", "best"))
+        if quality not in ("best", "1080", "720", "480", "360", "240"):
+            raise ValueError("画质选项无效。")
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
 
@@ -80,12 +102,54 @@ def download_audio():
         return jsonify({"error": "当前有其他任务正在转换，请稍等片刻再试。"}), 429
 
     temp_dir = tempfile.mkdtemp(prefix="bili-audio-")
+    with progress_lock:
+        task_logs[task_id] = []
+    add_task_log(task_id, f"任务开始：mode={mode}, pitch={pitch}, quality={quality}, url={url}")
     def set_progress(stage, percent, message, speed=None, eta=None):
         state = {"stage": stage, "percent": round(float(percent), 1), "message": message}
         if speed: state["speed"] = speed
         if eta is not None: state["eta"] = eta
         with progress_lock:
             task_progress[task_id] = state
+        add_task_log(task_id, f"阶段={stage}, 进度={state['percent']}%, {message}")
+
+    class TaskLogger:
+        def debug(self, msg):
+            if msg and not str(msg).startswith("[debug] "):
+                add_task_log(task_id, msg, "DEBUG")
+        def info(self, msg):
+            if msg: add_task_log(task_id, msg, "INFO")
+        def warning(self, msg):
+            if msg: add_task_log(task_id, msg, "WARN")
+        def error(self, msg):
+            if msg: add_task_log(task_id, msg, "ERROR")
+
+    def run_logged(args, check=True, timeout=600, capture_output=True, text=True, **kwargs):
+        import time
+        add_task_log(task_id, "执行命令：" + " ".join(str(x) for x in args))
+        started = time.monotonic()
+        proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace", bufsize=1, **kwargs)
+        output_lines = []
+        try:
+            for line in proc.stdout:
+                clean = line.rstrip()
+                if clean:
+                    output_lines.append(clean)
+                    add_task_log(task_id, clean, "FFMPEG")
+                if time.monotonic() - started > timeout:
+                    proc.kill()
+                    raise subprocess.TimeoutExpired(args, timeout, output="\\n".join(output_lines))
+            return_code = proc.wait(timeout=max(1, timeout - (time.monotonic() - started)))
+        except Exception:
+            if proc.poll() is None: proc.kill()
+            proc.wait()
+            raise
+        output = "\\n".join(output_lines)
+        add_task_log(task_id, f"命令结束：returncode={return_code}, 用时={time.monotonic()-started:.1f}s")
+        if check and return_code:
+            raise subprocess.CalledProcessError(return_code, args, output=output, stderr=output)
+        return subprocess.CompletedProcess(args, return_code, output, output)
+
     try:
         set_progress("解析链接", 1, "正在解析 B 站视频信息")
         def progress_hook(d):
@@ -93,13 +157,17 @@ def download_audio():
                 total = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
                 done = d.get("downloaded_bytes") or 0
                 percent = (done / total * 100) if total else 0
+                if total and (not getattr(progress_hook, "last_log_percent", -10) or percent - getattr(progress_hook, "last_log_percent", -10) >= 5):
+                    add_task_log(task_id, f"下载进度 {percent:.1f}% ({done}/{total} bytes)")
+                    progress_hook.last_log_percent = percent
                 speed = d.get("_speed_str")
                 eta = d.get("eta")
                 set_progress("下载源文件", min(percent, 99), f"源文件下载中：{percent:.1f}%", speed, eta)
             elif d.get("status") == "finished":
                 set_progress("处理源文件", 100, "源文件下载完成，开始转换")
         opts = {
-            "format": ("bestaudio/best" if mode == "audio" else "bestvideo*+bestaudio/best"),
+            "format": ("bestaudio/best" if mode == "audio" else (f"bestvideo[height<={quality}]+bestaudio/best[height<={quality}]/best" if quality != "best" else "bestvideo*+bestaudio/best")),
+            "logger": TaskLogger(),
             "merge_output_format": "mp4",
             "noplaylist": True,
             "outtmpl": os.path.join(temp_dir, "%(id)s.%(ext)s"),
@@ -145,7 +213,7 @@ def download_audio():
                 if pitch:
                     wav_path = os.path.join(temp_dir, "audio-source.wav")
                     shifted_path = os.path.join(temp_dir, "audio-pitch-shifted.wav")
-                    subprocess.run(
+                    run_logged(
                         [ffmpeg, "-y", "-i", source_path, "-vn", "-map", "0:a:0", "-ac", "2", "-ar", "48000", "-c:a", "pcm_s24le", wav_path],
                         check=True, capture_output=True, text=True, timeout=600
                     )
@@ -210,6 +278,7 @@ def download_audio():
             return response
     except yt_dlp.utils.DownloadError as exc:
         set_progress("失败", 0, "下载失败：源站连接中断或视频访问受限，请重试")
+        add_task_log(task_id, str(exc), "ERROR")
         shutil.rmtree(temp_dir, ignore_errors=True)
         message = str(exc)
         if "Sign in" in message or "login" in message.lower() or "cookie" in message.lower():
@@ -219,6 +288,7 @@ def download_audio():
         return jsonify({"error": message}), 502
     except Exception as exc:
         set_progress("失败", 0, str(exc)[:180] or "处理失败")
+        add_task_log(task_id, repr(exc), "ERROR")
         shutil.rmtree(temp_dir, ignore_errors=True)
         app.logger.exception("Audio extraction failed")
         return jsonify({"error": str(exc)[:300]}), 500
