@@ -57,7 +57,7 @@ def download_audio():
             "outtmpl": os.path.join(temp_dir, "%(id)s.%(ext)s"),
             "ffmpeg_location": shutil.which("ffmpeg") or "/usr/bin/ffmpeg",
             "restrictfilenames": True,
-            "quiet": True,
+            "quiet": False,
             "no_warnings": True,
             "socket_timeout": 25,
             "retries": 1,
