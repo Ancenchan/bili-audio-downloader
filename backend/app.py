@@ -115,7 +115,7 @@ def download_audio():
 
     class TaskLogger:
         def debug(self, msg):
-            if msg and not str(msg).startswith("[debug] "):
+            if msg:
                 add_task_log(task_id, msg, "DEBUG")
         def info(self, msg):
             if msg: add_task_log(task_id, msg, "INFO")
@@ -166,7 +166,7 @@ def download_audio():
             elif d.get("status") == "finished":
                 set_progress("处理源文件", 100, "源文件下载完成，开始转换")
         opts = {
-            "format": ("bestaudio/best" if mode == "audio" else (f"bestvideo[height<={quality}]+bestaudio/best[height<={quality}]/best" if quality != "best" else "bestvideo*+bestaudio/best")),
+            "format": ("bestaudio/best" if mode == "audio" else (f"bestvideo[height<={quality}]+bestaudio/best[height<={quality}]" if quality != "best" else "bestvideo*+bestaudio/best")),
             "logger": TaskLogger(),
             "merge_output_format": "mp4",
             "noplaylist": True,
