@@ -138,13 +138,13 @@ def download_audio():
                     add_task_log(task_id, clean, "FFMPEG")
                 if time.monotonic() - started > timeout:
                     proc.kill()
-                    raise subprocess.TimeoutExpired(args, timeout, output="\\n".join(output_lines))
+                    raise subprocess.TimeoutExpired(args, timeout, output="\n".join(output_lines))
             return_code = proc.wait(timeout=max(1, timeout - (time.monotonic() - started)))
         except Exception:
             if proc.poll() is None: proc.kill()
             proc.wait()
             raise
-        output = "\\n".join(output_lines)
+        output = "\n".join(output_lines)
         add_task_log(task_id, f"命令结束：returncode={return_code}, 用时={time.monotonic()-started:.1f}s")
         if check and return_code:
             raise subprocess.CalledProcessError(return_code, args, output=output, stderr=output)
