@@ -1,6 +1,7 @@
 import os
 import re
 import shutil
+import subprocess
 import tempfile
 import threading
 from urllib.parse import urlparse
@@ -51,6 +52,9 @@ def download_audio():
     data = request.get_json(silent=True) or {}
     try:
         url = validate_bilibili_url(data.get("url", ""))
+        pitch = data.get("pitch", 0)
+        if isinstance(pitch, bool) or not isinstance(pitch, int) or pitch < -12 or pitch > 12:
+            raise ValueError("升降调参数必须为 -12 到 +12 的整数半音。")
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
 
@@ -73,7 +77,6 @@ def download_audio():
             "fragment_retries": 1,
             "max_filesize": MAX_OUTPUT_MB * 1024 * 1024,
             "match_filter": duration_filter,
-            "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "0"}],
             "http_headers": {"User-Agent": "Mozilla/5.0"},
         }
         with yt_dlp.YoutubeDL(opts) as ydl:
@@ -83,14 +86,49 @@ def download_audio():
                             info.get("extractor_key"), info.get("id"), info.get("duration"),
                             len(info.get("requested_downloads") or []), os.listdir(temp_dir))
             title = info.get("title") or "bilibili-audio"
-            files = [os.path.join(temp_dir, n) for n in os.listdir(temp_dir) if n.lower().endswith(".mp3") and os.path.isfile(os.path.join(temp_dir, n))]
-            if not files:
-                app.logger.error("yt-dlp completed without MP3 output; temp files: %s; ffmpeg: %s", os.listdir(temp_dir), shutil.which("ffmpeg"))
-                raise RuntimeError("转换没有生成 MP3 文件。后端已记录诊断信息，请稍后重试；若持续失败，可能是视频源格式或转换过程异常。")
-            output_path = max(files, key=os.path.getsize)
+            safe_title = re.sub(r'[\\/:*?"<>|\r\n]+', "_", title).strip(" ._")[:100] or "bilibili-audio"
+            source_files = [
+                os.path.join(temp_dir, name)
+                for name in os.listdir(temp_dir)
+                if os.path.isfile(os.path.join(temp_dir, name))
+                and not name.lower().endswith((".wav", ".mp3", ".part", ".json"))
+            ]
+            if not source_files:
+                app.logger.error("yt-dlp completed without a source audio file; temp files: %s; ffmpeg: %s", os.listdir(temp_dir), shutil.which("ffmpeg"))
+                raise RuntimeError("没有找到下载后的原始音频文件，请稍后重试。")
+            source_path = max(source_files, key=os.path.getsize)
+            output_path = os.path.join(temp_dir, f"{safe_title}.mp3")
+            ffmpeg = shutil.which("ffmpeg") or "/usr/bin/ffmpeg"
+
+            if pitch:
+                wav_path = os.path.join(temp_dir, "audio-source.wav")
+                shifted_path = os.path.join(temp_dir, "audio-pitch-shifted.wav")
+                subprocess.run(
+                    [ffmpeg, "-y", "-i", source_path, "-vn", "-map", "0:a:0",
+                     "-ac", "2", "-ar", "48000", "-c:a", "pcm_s24le", wav_path],
+                    check=True, capture_output=True, text=True, timeout=600
+                )
+                rubberband = shutil.which("rubberband")
+                if not rubberband:
+                    raise RuntimeError("升降调组件未安装，请等待后端重新部署完成。")
+                subprocess.run(
+                    [rubberband, "-3", "-F", "-p", str(pitch), wav_path, shifted_path],
+                    check=True, capture_output=True, text=True, timeout=600
+                )
+                encode_source = shifted_path
+            else:
+                encode_source = source_path
+
+            subprocess.run(
+                [ffmpeg, "-y", "-i", encode_source, "-vn", "-map", "0:a:0",
+                 "-ac", "2", "-ar", "48000", "-c:a", "libmp3lame",
+                 "-b:a", "320k", "-id3v2_version", "3", output_path],
+                check=True, capture_output=True, text=True, timeout=600
+            )
+            if not os.path.isfile(output_path) or os.path.getsize(output_path) == 0:
+                raise RuntimeError("转换没有生成有效的 MP3 文件，请稍后重试。")
             if os.path.getsize(output_path) > MAX_OUTPUT_MB * 1024 * 1024:
                 raise RuntimeError(f"音频文件超过 {MAX_OUTPUT_MB} MB 限制。")
-            safe_title = re.sub(r'[\\/:*?"<>|\r\n]+', "_", title).strip(" ._")[:100] or "bilibili-audio"
             response = send_file(output_path, mimetype="audio/mpeg", as_attachment=True, download_name=f"{safe_title}.mp3", conditional=False)
             response.call_on_close(lambda: shutil.rmtree(temp_dir, ignore_errors=True))
             return response
