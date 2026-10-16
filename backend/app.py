@@ -326,7 +326,8 @@ def process_download(task_id, url, mode, pitch, quality, temp_dir):
                     rubberband = shutil.which("rubberband")
                     if not rubberband:
                         raise RuntimeError("升降调组件未安装，请等待后端重新部署完成。")
-                    run_logged([rubberband, "-3", "-F", "-p", str(pitch), wav_path, shifted_path], check=True)
+                    # 不加 -F：共振峰保留会让整首歌曲降调后出现尖锐的金属伪影
+                    run_logged([rubberband, "-3", "-p", str(pitch), wav_path, shifted_path], check=True)
                     encode_source = shifted_path
                 run_logged(
                     [ffmpeg, "-y", "-i", encode_source, "-vn", "-map", "0:a:0", "-ac", "2", "-ar", "48000", "-c:a", "libmp3lame", "-b:a", "320k", "-id3v2_version", "3", output_path],
@@ -359,7 +360,7 @@ def process_download(task_id, url, mode, pitch, quality, temp_dir):
                     if not rubberband:
                         raise RuntimeError("升降调组件未安装，请等待后端重新部署完成。")
                     run_logged(
-                        [rubberband, "-3", "-F", "-p", str(pitch), wav_path, shifted_path],
+                        [rubberband, "-3", "-p", str(pitch), wav_path, shifted_path],
                         check=True
                     )
                     run_logged(
