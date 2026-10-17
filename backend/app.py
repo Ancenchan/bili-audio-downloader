@@ -58,6 +58,35 @@ def video_fallback_formats(quality):
     return ["bv*[vcodec^=avc]+ba/b", "b/best"]
 
 
+def to_netscape_cookies(raw: str) -> str:
+    """把用户粘贴的 Cookie 文本转成 yt-dlp 可用的 Netscape cookies.txt。
+
+    支持两种输入：
+    1) 浏览器扩展导出的 Netscape cookies.txt（以 ``# Netscape`` 开头或含制表符）→ 原样写入；
+    2) 浏览器 ``Cookie`` 头格式 ``key=value; key=value`` → 转写到 .bilibili.com 域名下。
+    """
+    text = raw.strip()
+    if not text:
+        return ""
+    # 已经是 Netscape 格式：包含制表符，或以 # 开头（注释/声明行）
+    if "\t" in text or text.startswith("#"):
+        if not text.lstrip().startswith("#"):
+            text = "# Netscape HTTP Cookie File\n" + text
+        return text
+    # Cookie 头格式：name=value; name=value
+    lines = ["# Netscape HTTP Cookie File"]
+    for part in text.split(";"):
+        part = part.strip()
+        if "=" not in part:
+            continue
+        name, value = part.split("=", 1)
+        name, value = name.strip(), value.strip()
+        if not name:
+            continue
+        lines.append(f".bilibili.com\tTRUE\t/\tFALSE\t0\t{name}\t{value}")
+    return "\n".join(lines) + "\n"
+
+
 def validate_bilibili_url(raw_url: str) -> str:
     if not isinstance(raw_url, str) or len(raw_url) > 2048:
         raise ValueError("链接无效或过长。")
@@ -128,6 +157,9 @@ def download_audio():
         quality = str(data.get("quality", "best"))
         if quality not in ("best", "1080", "720", "480", "360", "240"):
             raise ValueError("画质选项无效。")
+        cookies = str(data.get("cookies") or "").strip()
+        if len(cookies) > 32768:
+            raise ValueError("Cookie 内容过长。")
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
 
@@ -149,7 +181,7 @@ def download_audio():
     try:
         worker = threading.Thread(
             target=process_download,
-            args=(task_id, url, mode, pitch, quality, temp_dir),
+            args=(task_id, url, mode, pitch, quality, temp_dir, cookies),
             daemon=True,
         )
         worker.start()
@@ -163,7 +195,7 @@ def download_audio():
     return jsonify({"task_id": task_id, "status": "processing"}), 202
 
 
-def process_download(task_id, url, mode, pitch, quality, temp_dir):
+def process_download(task_id, url, mode, pitch, quality, temp_dir, cookies=""):
     """后台线程：下载 → 转码 → 登记可下载文件。全程不依赖请求上下文。"""
 
     def set_progress(stage, percent, message, state="running", speed=None, eta=None, **extra):
@@ -263,6 +295,15 @@ def process_download(task_id, url, mode, pitch, quality, temp_dir):
                 "Referer": "https://www.bilibili.com/",
             },
         }
+        # 登录态：用户提供自己的 B 站 Cookie，用于需要登录才能访问的视频
+        cookie_source = None
+        if cookies:
+            cookie_path = os.path.join(temp_dir, "cookies.txt")
+            with open(cookie_path, "w", encoding="utf-8") as f:
+                f.write(to_netscape_cookies(cookies))
+            opts["cookies"] = cookie_path
+            cookie_source = cookie_path
+            add_task_log(task_id, "已启用用户提供的 B 站 Cookie（仅用于本次下载）", "INFO")
         with yt_dlp.YoutubeDL(opts) as ydl:
             app.logger.info("Starting yt-dlp; host=%s; version=%s", urlparse(url).hostname, yt_dlp.version.__version__)
             try:
@@ -403,7 +444,10 @@ def process_download(task_id, url, mode, pitch, quality, temp_dir):
         shutil.rmtree(temp_dir, ignore_errors=True)
         raw_message = str(exc)
         if "Sign in" in raw_message or "login" in raw_message.lower() or "cookie" in raw_message.lower():
-            message = "该视频可能需要登录或受到访问限制。本服务不会绕过登录或访问控制。"
+            if cookie_source:
+                message = "Cookie 已失效或你无权访问该视频，请重新登录 B 站后更新 Cookie。本服务不会绕过登录或访问控制。"
+            else:
+                message = "该视频需要登录才能访问。可在表单底部粘贴你自己的 B 站 Cookie（cookies.txt 或 SESSDATA=…; 形式）后重试。本服务仅使用你自己的登录态，不会绕过访问控制。"
         elif "503" in raw_message:
             message = "B 站视频源暂时拒绝服务（HTTP 503），已自动切换下载线路仍未成功。请稍后重试，或降低画质后再试。"
         else:
