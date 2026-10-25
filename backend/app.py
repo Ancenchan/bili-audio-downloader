@@ -450,6 +450,11 @@ def process_download(task_id, url, mode, pitch, quality, temp_dir, cookies=""):
                 message = "该视频需要登录才能访问。可在表单底部粘贴你自己的 B 站 Cookie（cookies.txt 或 SESSDATA=…; 形式）后重试。本服务仅使用你自己的登录态，不会绕过访问控制。"
         elif "503" in raw_message:
             message = "B 站视频源暂时拒绝服务（HTTP 503），已自动切换下载线路仍未成功。请稍后重试，或降低画质后再试。"
+        elif "Unable to extract initial state" in raw_message:
+            if cookie_source:
+                message = "B 站对本次请求触发了风控（未返回视频数据），已带上 Cookie 仍被拦截。请稍后重试，或换用另一条视频链接再试。"
+            else:
+                message = "B 站对本次请求触发了风控（未返回视频数据）。可在表单底部粘贴你自己的 B 站 Cookie 后重试，通常即可通过。"
         else:
             message = "解析或下载失败：视频可能不可访问、接口发生变化，或免费服务资源不足。请稍后重试。"
         mark_error(message)

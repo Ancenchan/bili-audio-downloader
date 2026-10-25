@@ -1,4 +1,8 @@
 Flask>=3.0,<4
 flask-cors>=4.0,<6
 gunicorn>=22.0,<24
-yt-dlp>=2026.10.21
+# 临时修复：稳定版 2026.10.21 及 nightly 的 B 站解析器都会报
+# "Unable to extract initial state"（B 站不再向非浏览器返回 __INITIAL_STATE__）。
+# 上游 PR #17898 改用 API 取详情，尚未合并，因此暂钉到该 PR 的提交。
+# 上游发布含此修复的稳定版后，改回 yt-dlp>=<新版本> 即可。
+yt-dlp @ https://github.com/0xvd/yt-dlp-exp/archive/e88263195a928487cd1802f1a626931f738db5e3.tar.gz
