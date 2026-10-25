@@ -21,6 +21,7 @@ main { max-width: 1000px; margin: 58px auto; padding: 0px 20px; }
 .formrow { display: flex; gap: 12px; }
 .url { flex: 1 1 0%; min-width: 0px; padding: 12px 16px; border: 1.5px solid rgb(255, 211, 221); border-radius: 14px; font-size: 14px; outline: none; background: rgba(255, 255, 255, 0.8); color: var(--ink); transition: 0.3s; }
 .url:focus { border-color: var(--blue); box-shadow: rgba(255, 177, 193, 0.22) 0px 0px 0px 4px; background: rgb(255, 255, 255); }
+textarea.url { min-height: 92px; resize: vertical; line-height: 1.65; font-family: inherit; }
 button { border: 0px; border-radius: 12px; padding: 0px 20px; min-height: 44px; background: var(--blue); color: rgb(255, 255, 255); font-weight: 700; font-size: 14px; cursor: pointer; white-space: nowrap; box-shadow: rgba(255, 143, 163, 0.28) 0px 4px 12px; letter-spacing: 1px; }
 button:disabled { opacity: 0.55; cursor: wait; }
 .hint { color: var(--muted); font-size: 12px; margin: 10px 0px 0px; }
@@ -108,8 +109,8 @@ input::placeholder { color: rgb(213, 184, 193); }
 </style>
 </head>
 <body><header><div class="brand"><span class="logo">♫</span> B站音视频下载器</div></header>
-<main><section class="panel"><form id="form"><div class="formrow"><input id="url" class="url" type="text" required placeholder="粘贴 B 站链接，或整段分享文案（如【视频标题】https://b23.tv/xxxx）" autocomplete="off"><button id="submit" type="submit">↓ 开始下载</button></div><p class="hint">支持直接粘贴 B 站分享文案，网页会自动识别链接。默认输出 MP3 320 kbps 高音质。</p>
-<div class="audio-settings"><div class="setting"><label for="mode">下载类型</label><select id="mode" class="pitch-select"><option value="audio">仅音频（MP3 320 kbps）</option><option value="video">仅视频（MP4，原始音轨）</option><option value="av_pitch">音视频（MP4，可升降调）</option></select><div class="seg-group" data-target="mode"><button type="button" class="seg-btn" data-value="audio">仅音频</button><button type="button" class="seg-btn" data-value="video">仅视频</button><button type="button" class="seg-btn" data-value="av_pitch">音视频</button></div><p class="hint">视频模式保留原始画面与音轨；音视频升降调模式会处理音频并合成回视频。</p><label for="quality" style="margin-top:16px">视频画质</label><select id="quality" class="pitch-select"><option value="best">最高可用画质</option><option value="1080">1080p 及以下（较清晰）</option><option value="720">720p（均衡）</option><option value="480">480p（更省空间）</option><option value="360">360p（小文件）</option><option value="240">240p（最小）</option></select><div class="seg-group" data-target="quality"><button type="button" class="seg-btn" data-value="best">最高</button><button type="button" class="seg-btn" data-value="1080">1080p</button><button type="button" class="seg-btn" data-value="720">720p</button><button type="button" class="seg-btn" data-value="480">480p</button><button type="button" class="seg-btn" data-value="360">360p</button><button type="button" class="seg-btn" data-value="240">240p</button></div><p class="hint">仅限制视频分辨率上限；源视频没有对应画质时，会选取可用的较低画质。</p><label for="pitch" style="margin-top:16px">升降调 <span class="pitch-value" id="pitch-value">0 半音</span></label><input id="pitch" class="pitch-slider" type="range" min="-12" max="12" step="1" value="0" aria-label="升降调半音"><div class="pitch-row"><span class="hint">−12 半音</span><span class="hint">原调</span><span class="hint">+12 半音</span></div><p class="hint">音频模式与音视频模式均可升降调；视频模式保留原始音轨。</p></div></div><details class="cookie-section"><summary>Cookie（可选 · 仅需登录的视频）</summary><textarea id="cookies" spellcheck="false" placeholder="粘贴浏览器导出的 cookies.txt，或 Cookie 头：SESSDATA=xxx; bili_jct=yyy"></textarea><p class="hint" style="margin-top:8px">仅用于你有权访问的视频。Cookie 只保存在本机浏览器（localStorage），并随本次下载请求发送给后端，不会被长期存储。</p></details></form><div id="status" class="status" role="status" aria-live="polite"></div>
+<main><section class="panel"><form id="form"><div class="formrow"><textarea id="url" class="url" required rows="3" placeholder="粘贴 B 站链接或分享文案，支持多行：每行一个，会依次下载&#10;如：【视频标题】https://b23.tv/xxxx" autocomplete="off"></textarea><button id="submit" type="submit">↓ 开始下载</button></div><p class="hint">支持一次粘贴多个链接（换行分隔），会按顺序逐个下载。默认输出 MP3 320 kbps 高音质。</p>
+<div class="audio-settings"><div class="setting"><label for="mode">下载类型</label><select id="mode" class="pitch-select"><option value="audio">仅音频（MP3 320 kbps）</option><option value="video">仅视频（MP4，原始音轨）</option><option value="av_pitch">音视频（MP4，可升降调）</option></select><div class="seg-group" data-target="mode"><button type="button" class="seg-btn" data-value="audio">仅音频</button><button type="button" class="seg-btn" data-value="video">仅视频</button><button type="button" class="seg-btn" data-value="av_pitch">音视频</button></div><p class="hint">视频模式保留原始画面与音轨；音视频升降调模式会处理音频并合成回视频。</p><label for="quality" style="margin-top:16px">视频画质</label><select id="quality" class="pitch-select"><option value="best">最高可用画质</option><option value="1080">1080p 及以下（较清晰）</option><option value="720">720p（均衡）</option><option value="480">480p（更省空间）</option><option value="360">360p（小文件）</option><option value="240">240p（最小）</option></select><div class="seg-group" data-target="quality"><button type="button" class="seg-btn" data-value="best">最高</button><button type="button" class="seg-btn" data-value="1080">1080p</button><button type="button" class="seg-btn" data-value="720">720p</button><button type="button" class="seg-btn" data-value="480">480p</button><button type="button" class="seg-btn" data-value="360">360p</button><button type="button" class="seg-btn" data-value="240">240p</button></div><p class="hint">仅限制视频分辨率上限；源视频没有对应画质时，会选取可用的较低画质。</p><label for="pitch" style="margin-top:16px">升降调 <span class="pitch-value" id="pitch-value">0 半音</span></label><input id="pitch" class="pitch-slider" type="range" min="-12" max="12" step="1" value="0" aria-label="升降调半音"><div class="pitch-row"><span class="hint">−12 半音</span><span class="hint">原调</span><span class="hint">+12 半音</span></div><p class="hint">音频模式与音视频模式均可升降调；视频模式保留原始音轨。</p></div></div><details class="cookie-section"><summary>Cookie（可选 · 仅需登录的视频）</summary><textarea id="cookies" spellcheck="false" placeholder="只粘贴 SESSDATA 的值即可（一长串字符），不用整份 cookies.txt"></textarea><p class="hint" style="margin-top:8px">获取：在浏览器登录 B 站 → 按 F12 → <b>Application（应用）</b> → <b>Cookies</b> → <b>https://www.bilibili.com</b> → 找到 <b>SESSDATA</b>，双击 Value 全选复制 → 粘贴到这里。<br>只保存在本机浏览器（localStorage），随本次请求发送给后端，不会被长期存储。</p></details></form><div id="status" class="status" role="status" aria-live="polite"></div>
 </section>
 <section class="task-panel"><div class="pitch-row"><h2 style="margin:0">任务查看</h2><button type="button" id="clear-tasks" class="tab">清空记录</button></div><div class="tabs"><button type="button" class="tab active" data-filter="all">全部</button><button type="button" class="tab" data-filter="running">处理中</button><button type="button" class="tab" data-filter="success">已完成</button><button type="button" class="tab" data-filter="error">失败</button></div><div id="task-list"><p class="hint">还没有下载任务。提交下载后会在这里显示状态。</p></div></section><p class="foot">请仅下载你有权保存和使用的内容，并遵守 B 站服务条款及著作权相关规定。<br>免费后端可能休眠；首次请求需要等待服务唤醒。</p></main>
 <script>
@@ -119,66 +120,94 @@ const form=document.querySelector("#form"),input=document.querySelector("#url"),
 cookiesInput.addEventListener("input",()=>{try{localStorage.setItem("bili_cookies",cookiesInput.value);}catch(e){}});})();
 function syncMode(){pitchSelect.disabled=modeSelect.value==="video";qualitySelect.disabled=modeSelect.value==="audio";const qt=document.querySelector("#quality-text"),qd=document.querySelector("#quality-desc");if(qt)qt.textContent=modeSelect.value==="audio"?"MP3 · 320 kbps · 48 kHz · 立体声":"MP4 · 优先保留最高可用画质";if(qd)qd.textContent=modeSelect.value==="audio"?"优先获取可用的最高质量音轨，再转为 MP3。":modeSelect.value==="video"?"下载视频并保留原始音轨，不重新编码画面。":"下载视频并可调整音高；画面尽量直接复制，避免二次压缩。";}
 modeSelect.addEventListener("change",syncMode);syncMode();pitchSelect.addEventListener("input",()=>{const v=Number(pitchSelect.value);pitchValue.textContent=(v>0?"+":"")+v+" 半音";});
-function renderTasks(){const logScrolls={};taskList.querySelectorAll(".task-logs").forEach(el=>{logScrolls[el.id]=el.scrollTop;});const visible=tasks.filter(t=>taskFilter==="all"||t.state===taskFilter);taskList.innerHTML=visible.length?visible.map(t=>'<div class="task-item"><div><b>'+escapeHtml(t.title)+'</b> <span class="task-status '+t.state+'">'+({running:"处理中",success:"已完成",error:"失败"}[t.state]||t.state)+'</span></div><div class="task-meta">'+escapeHtml(t.modeLabel)+' · '+escapeHtml(t.createdAt)+'</div><div class="progress-track"><div class="progress-fill" style="width:'+Math.max(0,Math.min(100,Number(t.percent)||0))+'%"></div></div><div class="progress-detail"><span>'+escapeHtml(t.stage||"等待开始")+'：'+escapeHtml(t.message||"")+'</span><b>'+((t.percent!=null)?Math.round(t.percent)+"%":"")+'</b></div><div class="task-meta">'+escapeHtml(t.url)+'</div><button type="button" class="log-button" data-logs="'+escapeHtml(t.id)+'">'+(t.logsExpanded?'隐藏详细日志':'查看详细日志')+'</button>'+(t.state==="success"?' <a class="log-button" href="'+API_BASE+'/api/file/'+encodeURIComponent(t.id)+'" rel="noopener">⤓ 再次保存文件（30分钟内有效）</a>':'')+(t.logsExpanded?'<pre class="task-logs" id="logs-'+escapeHtml(t.id)+'">'+escapeHtml((t.logs||[]).join("\n")||"正在等待后端日志……")+'</pre>':'')+'</div>').join(''):'<p class="hint">当前筛选下没有任务。</p>';taskList.querySelectorAll(".task-logs").forEach(el=>{if(Object.prototype.hasOwnProperty.call(logScrolls,el.id))el.scrollTop=logScrolls[el.id];});}
+function renderTasks(){const logScrolls={};taskList.querySelectorAll(".task-logs").forEach(el=>{logScrolls[el.id]=el.scrollTop;});const visible=tasks.filter(t=>taskFilter==="all"||t.state===taskFilter);taskList.innerHTML=visible.length?visible.map(t=>'<div class="task-item"><div><b>'+escapeHtml(t.title)+'</b> <span class="task-status '+t.state+'">'+({running:"处理中",success:"已完成",error:"失败"}[t.state]||t.state)+'</span></div><div class="task-meta">'+escapeHtml(t.modeLabel)+' · '+escapeHtml(t.createdAt)+'</div><div class="progress-track"><div class="progress-fill" style="width:'+Math.max(0,Math.min(100,Number(t.percent)||0))+'%"></div></div><div class="progress-detail"><span>'+escapeHtml(t.stage||"等待开始")+'：'+escapeHtml(t.message||"")+'</span><b>'+((t.percent!=null)?Math.round(t.percent)+"%":"")+'</b></div><div class="task-meta">'+escapeHtml(t.url)+'</div><button type="button" class="log-button" data-logs="'+escapeHtml(t.id)+'">'+(t.logsExpanded?'隐藏详细日志':'查看详细日志')+'</button>'+(t.state==="success"?' <a class="log-button" href="'+API_BASE+'/api/file/'+encodeURIComponent(t.id)+'" rel="noopener">⤓ 没收到？点此再次保存（30分钟内有效）</a>':'')+(t.logsExpanded?'<pre class="task-logs" id="logs-'+escapeHtml(t.id)+'">'+escapeHtml((t.logs||[]).join("\n")||"正在等待后端日志……")+'</pre>':'')+'</div>').join(''):'<p class="hint">当前筛选下没有任务。</p>';taskList.querySelectorAll(".task-logs").forEach(el=>{if(Object.prototype.hasOwnProperty.call(logScrolls,el.id))el.scrollTop=logScrolls[el.id];});}
 function escapeHtml(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
 document.querySelectorAll("[data-filter]").forEach(b=>b.addEventListener("click",()=>{taskFilter=b.dataset.filter;document.querySelectorAll("[data-filter]").forEach(x=>x.classList.toggle("active",x===b));renderTasks()}));document.querySelector("#clear-tasks").addEventListener("click",()=>{tasks=[];renderTasks()});
 document.querySelectorAll(".seg-group").forEach(g=>{const sel=document.getElementById(g.dataset.target),btns=[...g.querySelectorAll(".seg-btn")];const refresh=()=>btns.forEach(b=>{b.classList.toggle("active",b.dataset.value===sel.value);b.disabled=sel.disabled;});btns.forEach(b=>b.addEventListener("click",()=>{if(sel.disabled)return;sel.value=b.dataset.value;sel.dispatchEvent(new Event("change"));refresh();}));sel.addEventListener("change",refresh);new MutationObserver(refresh).observe(sel,{attributes:true,attributeFilter:["disabled"]});refresh();});
 taskList.addEventListener("click",async event=>{const b=event.target.closest("[data-logs]");if(!b)return;const task=tasks.find(t=>t.id===b.dataset.logs);if(!task)return;task.logsExpanded=!task.logsExpanded;renderTasks();if(task.logsExpanded){await refreshTaskLogs(task);requestAnimationFrame(()=>{const el=document.querySelector("#logs-"+CSS.escape(task.id));if(el)el.scrollTop=el.scrollHeight;});}});
 async function refreshTaskLogs(task){try{const r=await fetch(API_BASE+"/api/logs/"+encodeURIComponent(task.id),{cache:"no-store"});if(!r.ok){task.logsError="日志接口返回 HTTP "+r.status+(r.status===404?"（后端可能尚未部署日志接口）":"");}else{const d=await r.json();task.logs=d.logs||[];task.logsError=task.logs.length?"":"后端已连接，但暂时没有该任务的日志。请确认任务是本次页面刷新后新提交的。";}if(task.logsExpanded){const el=document.querySelector("#logs-"+CSS.escape(task.id));if(el){const atBottom=el.scrollTop+el.clientHeight>=el.scrollHeight-30;el.textContent=task.logsError||task.logs.join("\n")||"后端已连接，但暂时没有日志。";if(atBottom)el.scrollTop=el.scrollHeight;}}}catch(e){task.logsError="无法连接日志接口："+(e&&e.message?e.message:"网络错误");const el=document.querySelector("#logs-"+CSS.escape(task.id));if(task.logsExpanded&&el)el.textContent=task.logsError;}}
 function showStatus(message,error=false){statusBox.className="status show"+(error?" error":"");statusBox.textContent=message;}
-function extractBilibiliUrl(text){
+function extractBilibiliUrls(text){
   const candidates=text.match(/https?:\/\/[^\s<>"'【】「」『』]+/gi)||[];
+  const found=[];
+  const seen=new Set();
   for(const candidate of candidates){
     const cleaned=candidate.replace(/[)\]}，。！？、；："'】」』>.,!?;:]+$/g,"");
-    try{const parsed=new URL(cleaned);if(/^https?:$/.test(parsed.protocol)&&(/^([a-z0-9-]+\.)*bilibili\.com$/i.test(parsed.hostname)||/^b23\.tv$/i.test(parsed.hostname)))return parsed.href;}catch{}
+    try{
+      const parsed=new URL(cleaned);
+      if(!/^https?:$/.test(parsed.protocol))continue;
+      if(!(/^([a-z0-9-]+\.)*bilibili\.com$/i.test(parsed.hostname)||/^b23\.tv$/i.test(parsed.hostname)))continue;
+      const bv=/\/video\/([Bb][Vv][0-9A-Za-z]+)/.exec(parsed.pathname);
+      const key=bv?bv[1].toLowerCase():parsed.href;
+      if(seen.has(key))continue;
+      seen.add(key);found.push(parsed.href);
+    }catch{}
   }
-  return null;
+  return found;
 }
+let queueRunning=false;
 form.addEventListener("submit",async event=>{
  event.preventDefault();
- const pasted=input.value.trim();
- const url=extractBilibiliUrl(pasted);
- if(!url){showStatus("没有找到有效的 B 站链接。请粘贴包含 https://b23.tv/… 或 https://www.bilibili.com/… 的分享文案。",true);return;}
- if(pasted!==url)showStatus("已从分享文案中识别链接："+url+"\n正在连接服务并提取音频……");
+ if(queueRunning)return;
+ const urls=extractBilibiliUrls(input.value);
+ if(!urls.length){showStatus("没有找到有效的 B 站链接。请粘贴包含 https://b23.tv/… 或 https://www.bilibili.com/… 的分享文案。",true);return;}
  if(API_BASE.includes("YOUR-RENDER-SERVICE")){showStatus("后端尚未部署完成，请稍后再试。",true);return}
- const taskId="task_"+Date.now()+"_"+Math.random().toString(36).slice(2,8);const task={id:taskId,title:url,modeLabel:({audio:"仅音频 MP3",video:"仅视频 MP4",av_pitch:"音视频 MP4"}[modeSelect.value]),createdAt:new Date().toLocaleTimeString(),state:"running",stage:"连接服务",percent:0,message:"正在连接后端",url};tasks.unshift(task);renderTasks();button.disabled=true;button.textContent="正在处理…";let pollBusy=false,taskDone=false;
- function stopPolling(){clearInterval(progressTimer);button.disabled=false;button.textContent="↓ 提取并下载";}
- function triggerNativeDownload(t){const a=document.createElement("a");a.href=API_BASE+"/api/file/"+encodeURIComponent(t.id);a.rel="noopener";document.body.appendChild(a);a.click();a.remove();}
- async function pollProgress(){
+ queueRunning=true;button.disabled=true;
+ try{
+   for(let i=0;i<urls.length;i++){
+     button.textContent=urls.length>1?("处理中 "+(i+1)+"/"+urls.length):"正在处理…";
+     await runOneTask(urls[i],i,urls.length);
+   }
+   if(urls.length>1)showStatus("全部完成：共 "+urls.length+" 个文件已保存到浏览器的下载文件夹，无需再打开文件。");
+ }finally{queueRunning=false;button.disabled=false;button.textContent="↓ 开始下载";}
+});
+function runOneTask(url,index,total){
+ return new Promise(resolve=>{
+  const taskId="task_"+Date.now()+"_"+Math.random().toString(36).slice(2,8);
+  const task={id:taskId,title:url,modeLabel:({audio:"仅音频 MP3",video:"仅视频 MP4",av_pitch:"音视频 MP4"}[modeSelect.value]),createdAt:new Date().toLocaleTimeString(),state:"running",stage:"连接服务",percent:0,message:"正在连接后端",url};
+  tasks.unshift(task);renderTasks();
+  let pollBusy=false,taskDone=false;
+  const prefix=total>1?("第 "+(index+1)+"/"+total+" 个 · "):"";
+  function finish(){clearInterval(progressTimer);resolve();}
+  function triggerNativeDownload(t){const a=document.createElement("a");a.href=API_BASE+"/api/file/"+encodeURIComponent(t.id);a.rel="noopener";document.body.appendChild(a);a.click();a.remove();}
+  async function pollProgress(){
    if(pollBusy||taskDone)return;pollBusy=true;
    try{
-     const pr=await fetch(API_BASE+"/api/progress/"+encodeURIComponent(taskId),{cache:"no-store"});
-     if(pr.ok){
-       const p=await pr.json();
-       if(p.state==="ready"){
-         taskDone=true;
-         if(p.filename)task.title=p.filename;
-         task.state="success";task.stage="完成";task.percent=100;task.message="文件已发送至浏览器下载";
-         renderTasks();showStatus("转换完成，已触发浏览器下载。若没有弹出保存窗口，可点任务卡片里的「再次保存文件」。");
-         triggerNativeDownload(task);stopPolling();
-       }else if(p.state==="error"){
-         taskDone=true;task.state="error";task.stage="失败";
-         task.message=p.error||p.message||"处理失败";
-         let friendly=task.message;
-         if(/\d+\s*MB/.test(friendly))friendly+=" 可降低视频画质（如 720p / 480p）后重试。";
-         renderTasks();showStatus(friendly,true);stopPolling();
-       }else{
-         task.stage=p.stage||task.stage;task.percent=p.percent??task.percent;task.message=p.message||task.message;
-         if(p.speed)task.message+=" · "+p.speed;
-         if(p.eta!=null)task.message+=" · 约 "+p.eta+" 秒";
-         renderTasks();showStatus(task.stage+"："+task.message);
-       }
-       if(!taskDone&&task.logsExpanded)await refreshTaskLogs(task);
+    const pr=await fetch(API_BASE+"/api/progress/"+encodeURIComponent(taskId),{cache:"no-store"});
+    if(pr.ok){
+     const p=await pr.json();
+     if(p.state==="ready"){
+      taskDone=true;
+      if(p.filename)task.title=p.filename;
+      task.state="success";task.stage="完成";task.percent=100;task.message="已保存到浏览器的下载文件夹";
+      renderTasks();showStatus(prefix+"转换完成，文件已自动保存到下载文件夹，无需再打开文件。");
+      triggerNativeDownload(task);finish();
+     }else if(p.state==="error"){
+      taskDone=true;task.state="error";task.stage="失败";
+      task.message=p.error||p.message||"处理失败";
+      let friendly=prefix+task.message;
+      if(/\d+\s*MB/.test(friendly))friendly+=" 可降低视频画质（如 720p / 480p）后重试。";
+      renderTasks();showStatus(friendly,true);finish();
+     }else{
+      task.stage=p.stage||task.stage;task.percent=p.percent??task.percent;task.message=p.message||task.message;
+      if(p.speed)task.message+=" · "+p.speed;
+      if(p.eta!=null)task.message+=" · 约 "+p.eta+" 秒";
+      renderTasks();showStatus(prefix+task.stage+"："+task.message);
      }
+     if(!taskDone&&task.logsExpanded)await refreshTaskLogs(task);
+    }
    }catch{}finally{pollBusy=false}
- }
- const progressTimer=setInterval(pollProgress,1000);
- if(pasted===url)showStatus(modeSelect.value==="audio"?"正在获取最高质量音轨并转换为 MP3 320 kbps。免费服务首次启动可能需要等待一会儿。":modeSelect.value==="video"?"正在下载最高可用画质的视频。免费服务首次启动可能需要等待一会儿。":"正在下载视频"+(Number(pitchSelect.value)?"并进行音高调整":"")+"，然后合成 MP4 文件。免费服务首次启动可能需要等待一会儿。");
- try{
-  const response=await fetch(API_BASE+"/api/download",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({url,mode:document.querySelector("#mode").value,pitch:Number(document.querySelector("#pitch").value),task_id:taskId,quality:qualitySelect.value,cookies:(cookiesInput.value||"").trim()||undefined})});
-  if(!response.ok){let message="处理失败，请稍后重试。";try{const data=await response.json();if(data.error)message=data.error}catch{}throw new Error(message)}
-  await response.json().catch(()=>{});
-  pollProgress();
- }catch(error){taskDone=true;showStatus(error.message||"请求失败，请检查网络后重试。",true);task.state="error";task.stage="失败";task.message=error.message||"请求失败";renderTasks();stopPolling();}
-});
+  }
+  const progressTimer=setInterval(pollProgress,1000);
+  showStatus(prefix+(modeSelect.value==="audio"?"正在获取最高质量音轨并转换为 MP3 320 kbps。免费服务首次启动可能需要等待一会儿。":modeSelect.value==="video"?"正在下载最高可用画质的视频。免费服务首次启动可能需要等待一会儿。":"正在下载视频"+(Number(pitchSelect.value)?"并进行音高调整":"")+"，然后合成 MP4 文件。免费服务首次启动可能需要等待一会儿。"));
+  (async()=>{
+   try{
+    const response=await fetch(API_BASE+"/api/download",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({url,mode:document.querySelector("#mode").value,pitch:Number(document.querySelector("#pitch").value),task_id:taskId,quality:qualitySelect.value,cookies:(cookiesInput.value||"").trim()||undefined})});
+    if(!response.ok){let message="处理失败，请稍后重试。";try{const data=await response.json();if(data.error)message=data.error}catch{}throw new Error(message)}
+    await response.json().catch(()=>{});
+    pollProgress();
+   }catch(error){taskDone=true;showStatus(prefix+(error.message||"请求失败，请检查网络后重试。"),true);task.state="error";task.stage="失败";task.message=error.message||"请求失败";renderTasks();finish();}
+  })();
+ });
+}
 </script></body></html>

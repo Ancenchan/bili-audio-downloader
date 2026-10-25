@@ -75,6 +75,9 @@ def to_netscape_cookies(raw: str) -> str:
         return text
     # Cookie 头格式：name=value; name=value
     lines = ["# Netscape HTTP Cookie File"]
+    if "=" not in text and "\t" not in text:
+        # 用户只粘贴了裸值：默认当作 SESSDATA（最省事的上手方式）
+        text = "SESSDATA=" + text
     for part in text.split(";"):
         part = part.strip()
         if "=" not in part:
