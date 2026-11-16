@@ -1,5 +1,6 @@
 import os
 import re
+import json
 import shutil
 import subprocess
 import tempfile
@@ -272,7 +273,19 @@ def process_download(task_id, url, mode, pitch, quality, temp_dir, cookies=""):
             elif d.get("status") == "finished":
                 set_progress("处理源文件", 100, "源文件下载完成，开始转换")
         opts = {
-            "format": ("bestaudio/best" if mode == "audio" else (f"bv*[height<={quality}]+ba/b[height<={quality}]/bv*+ba/b" if quality != "best" else "bv*+ba/b")),
+            # 视频类模式优先 H.264(avc1) 视频 + AAC 音频：iPhone 相册只兼容这套组合，
+            # B 站高画质默认常给 AV1/HEVC，直接合并会导致 iPhone 无法存入相册
+            "format": (
+                "bestaudio/best" if mode == "audio" else (
+                    f"bv*[height<={quality}][vcodec^=avc1]+ba[acodec^=mp4a]"
+                    f"/bv*[height<={quality}][vcodec^=avc1]+ba"
+                    f"/b[height<={quality}][vcodec^=avc1]"
+                    f"/bv*[height<={quality}]+ba/b[height<={quality}]/bv*+ba/b"
+                    if quality != "best" else
+                    "bv*[vcodec^=avc1]+ba[acodec^=mp4a]"
+                    "/bv*[vcodec^=avc1]+ba/b[vcodec^=avc1]/bv*+ba/b"
+                )
+            ),
             "logger": TaskLogger(),
             "merge_output_format": "mp4",
             "noplaylist": True,
@@ -339,6 +352,37 @@ def process_download(task_id, url, mode, pitch, quality, temp_dir, cookies=""):
             title = info.get("title") or "bilibili-audio"
             safe_title = re.sub(r'[\\/:*?"<>|\r\n]+', "_", title).strip(" ._")[:100] or "bilibili-audio"
             ffmpeg = shutil.which("ffmpeg") or "/usr/bin/ffmpeg"
+
+            def probe_codecs(path):
+                """返回 (视频编码, 音频编码)；探测失败返回 (None, None)。"""
+                ffprobe = shutil.which("ffprobe") or "/usr/bin/ffprobe"
+                try:
+                    result = subprocess.run(
+                        [ffprobe, "-v", "error", "-show_entries", "stream=codec_type,codec_name", "-of", "json", path],
+                        capture_output=True, text=True, timeout=30,
+                    )
+                    streams = json.loads(result.stdout or "{}").get("streams", [])
+                    video = next((s.get("codec_name") for s in streams if s.get("codec_type") == "video"), None)
+                    audio = next((s.get("codec_name") for s in streams if s.get("codec_type") == "audio"), None)
+                    return video, audio
+                except Exception:
+                    return None, None
+
+            def finalize_mp4(src, dst):
+                """不重新编码地整理成标准 MP4（faststart，便于 iPhone 识别/导入）。
+                音频不是 AAC 时只重转音频（开销很小），视频流始终 copy。"""
+                if os.path.abspath(src) == os.path.abspath(dst):
+                    renamed = src + ".source"
+                    os.replace(src, renamed)
+                    src = renamed
+                _, acodec = probe_codecs(src)
+                audio_args = ["-c:a", "copy"] if acodec in (None, "aac") else ["-c:a", "aac", "-b:a", "192k"]
+                run_logged(
+                    [ffmpeg, "-y", "-i", src, "-map", "0:v:0", "-map", "0:a:0?",
+                     "-c:v", "copy", *audio_args, "-movflags", "+faststart", dst],
+                    check=True,
+                )
+
             downloaded = [
                 os.path.join(temp_dir, name)
                 for name in os.listdir(temp_dir)
@@ -379,17 +423,15 @@ def process_download(task_id, url, mode, pitch, quality, temp_dir, cookies=""):
                 )
                 mime_type = "audio/mpeg"
             elif mode == "video":
-                set_progress("封装视频", 100, "正在整理 MP4 文件")
+                set_progress("封装视频", 100, "正在整理 MP4 文件（兼容 iPhone 相册）")
                 output_path = os.path.join(temp_dir, f"{safe_title}.mp4")
-                if os.path.abspath(source_path) != os.path.abspath(output_path):
-                    shutil.copyfile(source_path, output_path)
+                finalize_mp4(source_path, output_path)
                 mime_type = "video/mp4"
             else:
                 set_progress("处理音视频", 100, "正在合成 MP4" + (" 并调整音高" if pitch else ""))
                 if not pitch:
                     output_path = os.path.join(temp_dir, f"{safe_title}.mp4")
-                    if os.path.abspath(source_path) != os.path.abspath(output_path):
-                        shutil.copyfile(source_path, output_path)
+                    finalize_mp4(source_path, output_path)
                 else:
                     wav_path = os.path.join(temp_dir, "audio-source.wav")
                     shifted_path = os.path.join(temp_dir, "audio-pitch-shifted.wav")
@@ -425,6 +467,16 @@ def process_download(task_id, url, mode, pitch, quality, temp_dir, cookies=""):
                 raise RuntimeError(f"文件超过 {MAX_OUTPUT_MB} MB 限制，请降低画质后重试。")
 
             filename = os.path.basename(output_path)
+            ios_warning = None
+            if mime_type == "video/mp4":
+                vcodec, acodec = probe_codecs(output_path)
+                add_task_log(task_id, f"输出编码：video={vcodec}, audio={acodec}", "INFO")
+                if vcodec and vcodec != "h264":
+                    ios_warning = (
+                        f"注意：此视频为 {vcodec} 编码，iPhone 可能无法存入相册。"
+                        "可改选 1080p 画质重新下载（优先获取 H.264 版本）。"
+                    )
+                    add_task_log(task_id, ios_warning, "WARN")
             with progress_lock:
                 task_files[task_id] = {
                     "temp_dir": temp_dir,
@@ -435,7 +487,8 @@ def process_download(task_id, url, mode, pitch, quality, temp_dir, cookies=""):
                 }
             set_progress(
                 "完成", 100, "文件已生成，正在发送到浏览器",
-                state="ready", filename=filename
+                state="ready", filename=filename,
+                **({"ios_warning": ios_warning} if ios_warning else {})
             )
     except subprocess.TimeoutExpired as exc:
         message = f"服务端处理超时（超过 {SUBPROCESS_TIMEOUT} 秒），视频可能过大，请降低画质或改较短的视频后重试。"
