@@ -296,6 +296,9 @@ def process_download(task_id, url, mode, pitch, quality, temp_dir, cookies=""):
             "no_warnings": False,
             "verbose": True,
             "socket_timeout": 45,
+            # 分块下载：B 站部分 CDN（如 akam）会在传输中途掐断云端 IP 的连接，
+            # 分块后每块独立 Range 请求、独立重试续传，避免整文件从头重来
+            "http_chunk_size": 4 * 1024 * 1024,
             "retries": 8,
             "extractor_retries": 5,
             "ignore_no_formats_error": False,
@@ -325,17 +328,21 @@ def process_download(task_id, url, mode, pitch, quality, temp_dir, cookies=""):
             try:
                 info = ydl.extract_info(url, download=True)
             except yt_dlp.utils.DownloadError as first_error:
-                # B 站 CDN 偶尔会对视频流返回 503（云端 IP 常见），同线路重试无效，换格式/线路再试
-                if mode == "audio" or "503" not in str(first_error):
+                # B 站 CDN 对云端 IP 的三类典型拦截：HTTP 503、中途掐断连接（Remote end closed）、
+                # 风控导致拿不到可用流（Requested format is not available）。
+                # 同一条已签名线路重试无效，先重新解析拿新播放地址（可能换 CDN），再换编码/单文件格式
+                retryable = ("503", "Remote end closed connection", "Requested format is not available", "Connection reset")
+                if mode == "audio" or not any(s in str(first_error) for s in retryable):
                     raise
                 info = None
                 last_error = first_error
-                for fmt in video_fallback_formats(quality):
-                    add_task_log(task_id, f"视频源 503，切换下载线路重试：{fmt}", "WARN")
+                for fmt in [opts["format"], *video_fallback_formats(quality)]:
+                    add_task_log(task_id, f"源线路下载失败，重新解析并切换线路重试：{fmt}", "WARN")
                     set_progress("下载源文件", 1, "源线路不可用，正在切换线路重试")
                     for stale in os.listdir(temp_dir):
                         stale_path = os.path.join(temp_dir, stale)
-                        if os.path.isfile(stale_path):
+                        # 保留 Cookie 文件，否则重试会丢失登录态
+                        if os.path.isfile(stale_path) and stale != "cookies.txt":
                             os.remove(stale_path)
                     try:
                         with yt_dlp.YoutubeDL(dict(opts, format=fmt)) as ydl_retry:
@@ -506,6 +513,13 @@ def process_download(task_id, url, mode, pitch, quality, temp_dir, cookies=""):
                 message = "该视频需要登录才能访问。可在表单底部粘贴你自己的 B 站 Cookie（cookies.txt 或 SESSDATA=…; 形式）后重试。本服务仅使用你自己的登录态，不会绕过访问控制。"
         elif "503" in raw_message:
             message = "B 站视频源暂时拒绝服务（HTTP 503），已自动切换下载线路仍未成功。请稍后重试，或降低画质后再试。"
+        elif "Remote end closed connection" in raw_message or "Connection reset" in raw_message:
+            message = "B 站 CDN 中断了下载连接（云端线路限制），已自动换线路重试仍未成功。请稍后重试，或降低画质（如 720p）后再试。"
+        elif "Requested format is not available" in raw_message:
+            if cookie_source:
+                message = "没有获取到可用的视频流（可能触发风控或该画质不可用），已自动重试。请稍后重试或改选其他画质。"
+            else:
+                message = "没有获取到可用的视频流（可能触发风控）。可在表单底部粘贴你自己的 B 站 Cookie 后重试，或改选其他画质。"
         elif "Unable to extract initial state" in raw_message:
             if cookie_source:
                 message = "B 站对本次请求触发了风控（未返回视频数据），已带上 Cookie 仍被拦截。请稍后重试，或换用另一条视频链接再试。"
