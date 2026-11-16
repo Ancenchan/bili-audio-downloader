@@ -323,21 +323,38 @@ def process_download(task_id, url, mode, pitch, quality, temp_dir, cookies=""):
             opts["cookies"] = cookie_path
             cookie_source = cookie_path
             add_task_log(task_id, "已启用用户提供的 B 站 Cookie（仅用于本次下载）", "INFO")
-        with yt_dlp.YoutubeDL(opts) as ydl:
+        # B 站给云端 IP 固定分配 akam CDN，重新解析不会换线路；
+        # 但同一条签名 URL 在官方其他 upos 镜像（cos/hw/ali）上同样有效，可替换主机名换线
+        MIRROR_HOSTS = ["upos-sz-mirrorcos.bilivideo.com", "upos-sz-mirrorhw.bilivideo.com", "upos-sz-mirrorali.bilivideo.com"]
+
+        def run_extract(format_str, mirror_host=None, retries=None):
+            run_opts = dict(opts, format=format_str)
+            if retries is not None:
+                run_opts["retries"] = retries
+            with yt_dlp.YoutubeDL(run_opts) as y:
+                info = y.extract_info(url, download=False)
+                if mirror_host:
+                    for f in info.get("formats") or []:
+                        u = f.get("url") or ""
+                        if "upos" in u or "bilivideo.com" in u:
+                            f["url"] = re.sub(r"^https?://[^/]+", f"https://{mirror_host}", u)
+                return y.process_ie_result(info, download=True)
+
+        if True:
             app.logger.info("Starting yt-dlp; host=%s; version=%s", urlparse(url).hostname, yt_dlp.version.__version__)
             try:
-                info = ydl.extract_info(url, download=True)
+                info = run_extract(opts["format"])
             except yt_dlp.utils.DownloadError as first_error:
-                # B 站 CDN 对云端 IP 的三类典型拦截：HTTP 503、中途掐断连接（Remote end closed）、
-                # 风控导致拿不到可用流（Requested format is not available）。
-                # 同一条已签名线路重试无效，先重新解析拿新播放地址（可能换 CDN），再换编码/单文件格式
+                # 三类可换线重试的 CDN 拦截：HTTP 503、中途掐断连接（Remote end closed）、
+                # 风控导致拿不到可用流（Requested format is not available）
                 retryable = ("503", "Remote end closed connection", "Requested format is not available", "Connection reset")
                 if mode == "audio" or not any(s in str(first_error) for s in retryable):
                     raise
                 info = None
                 last_error = first_error
-                for fmt in [opts["format"], *video_fallback_formats(quality)]:
-                    add_task_log(task_id, f"源线路下载失败，重新解析并切换线路重试：{fmt}", "WARN")
+                attempts = [(opts["format"], m) for m in MIRROR_HOSTS] + [(fmt, None) for fmt in video_fallback_formats(quality)]
+                for fmt, mirror in attempts:
+                    add_task_log(task_id, f"源线路下载失败，切换线路重试：{mirror or fmt}", "WARN")
                     set_progress("下载源文件", 1, "源线路不可用，正在切换线路重试")
                     for stale in os.listdir(temp_dir):
                         stale_path = os.path.join(temp_dir, stale)
@@ -345,8 +362,7 @@ def process_download(task_id, url, mode, pitch, quality, temp_dir, cookies=""):
                         if os.path.isfile(stale_path) and stale != "cookies.txt":
                             os.remove(stale_path)
                     try:
-                        with yt_dlp.YoutubeDL(dict(opts, format=fmt)) as ydl_retry:
-                            info = ydl_retry.extract_info(url, download=True)
+                        info = run_extract(fmt, mirror_host=mirror, retries=3)
                         break
                     except yt_dlp.utils.DownloadError as exc:
                         last_error = exc
